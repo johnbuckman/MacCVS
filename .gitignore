@@ -1,0 +1,12 @@
+# Build artifacts
+.build/
+.swiftpm/
+*.app/
+dist/
+
+# Icon build intermediates (AppIcon.icns is committed)
+AppIcon.iconset/
+icon_master.png
+
+# macOS
+.DS_Store

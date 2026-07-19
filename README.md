@@ -1,0 +1,102 @@
+# MacCVS
+
+A modern, native **CVS client for macOS**, written in SwiftUI. A spiritual
+successor to the classic [MacCVS / cvsgui](https://cvsgui.sourceforge.net) — which
+was a PowerPC/Carbon app that has been unrunnable since macOS Catalina removed
+Carbon and 32-bit support. MacCVS is a fresh, universal (Apple Silicon + Intel),
+notarized app that drives your existing `cvs` command-line tool.
+
+![MacCVS main window](docs/screenshots/main-window.png)
+
+## Why
+
+CVS is old, but plenty of long-lived projects still live in it. The good graphical
+clients were left behind years ago:
+
+- **MacCVS (cvsgui)** — Carbon/PowerPlant, dead since Catalina.
+- **gCVS** — GTK2 + libglade, a multi-day dependency-porting project on modern macOS.
+- **TkRev/TkCVS** — still works (Tcl/Tk), but not a native Cocoa app.
+
+MacCVS is a small native app that wraps the `cvs` CLI you already have and gives it
+a fast, modern macOS front end.
+
+## Features
+
+- **Finder-style column browser** for the directory hierarchy (real `NSBrowser`).
+  The first column is a **project switcher** listing the CVS working copies you've
+  opened; right-click to *Forget* one or reveal it in Finder.
+- **File list** showing every file's **CVS status and revision**, with sortable
+  Name / Status / Rev columns.
+- **Instant local change detection.** A file's modified state is determined by
+  comparing its modification time to the timestamp CVS recorded in `CVS/Entries` —
+  exactly how `cvs` decides — with **no network round-trip**. An FSEvents watcher
+  flips files to *Modified* the moment you save.
+- **Instant diffs.** When a file changes, its base revision is fetched in the
+  background and cached, so opening a diff is immediate (no waiting on the server).
+- **Native side-by-side diff window** (see below): line- or **word-level**
+  highlighting, a unified-view toggle, a **draggable center divider**, and
+  multi-file diffs in one window. The window auto-sizes to fit the content.
+- **Core CVS operations**: Update, Commit (with a per-file picker), Diff, Log,
+  Add, Revert (`update -C`).
+- **View filters**: hide dot-files and non-CVS files by default, toggle from the
+  View menu (⌘⇧. and ⌘⇧U).
+- Remembers your **last project and directory** across launches.
+
+## The diff viewer
+
+![MacCVS diff window](docs/screenshots/diff-window.png)
+
+The diff viewer is a standalone, resizable window. Its data model and side-by-side
+visual style are adapted from [swifty-diff](https://github.com/michaelneale/swifty-diff)
+(MIT); MacCVS adds a `cvs diff` parser, a real window, a unified-view toggle, a
+draggable divider, and **word-level** (intra-line) highlighting.
+
+- **Side by side / Unified** toggle.
+- **Line / Word** toggle — Word highlights only the changed tokens within a line.
+- Drag the **center divider** to rebalance the two panes; each pane scrolls its
+  own long lines while vertical scrolling stays in sync.
+- Select several modified files and **Diff** them all into one window.
+
+## Requirements
+
+- macOS 14 (Sonoma) or later.
+- A `cvs` command-line binary on your system. MacCVS looks for it at
+  `/usr/local/bin/cvs`, `/opt/homebrew/bin/cvs`, or `/usr/bin/cvs`.
+  Install one with Homebrew: `brew install cvs` (or use CVSNT).
+
+## Install
+
+Download the latest notarized build from the
+[Releases](https://github.com/johnbuckman/MacCVS/releases) page, unzip, and drag
+**MacCVS.app** to your Applications folder.
+
+## Build from source
+
+```sh
+git clone https://github.com/johnbuckman/MacCVS.git
+cd MacCVS
+swift build -c release          # or: ./build.sh  (assembles a universal .app)
+```
+
+`build.sh` produces a universal (arm64 + x86_64) `MacCVS.app`. Notarized releases
+are produced with `release.sh` (Developer ID signing + `notarytool`).
+
+## Architecture
+
+MacCVS is a thin GUI over the `cvs` CLI — it never re-implements the CVS protocol.
+
+- `CVSService` execs `cvs` directly via `Process` (no shell), and computes local
+  modified-state from `CVS/Entries` timestamps.
+- `WorkingCopyStore` is the app state (`@MainActor` `ObservableObject`): the file
+  list, the FSEvents watcher, the base-revision prefetch cache, and all operations.
+- `DirectoryColumnBrowser` wraps `NSBrowser` for the column view + project switcher.
+- `SwiftyDiff` holds the diff model, the unified-diff parser, word-level diffing,
+  and the SwiftUI diff window.
+
+## Credits & license
+
+MacCVS is licensed under the **GNU General Public License v3.0** (see `LICENSE`).
+
+The diff viewer adapts the model and visual style of
+[swifty-diff](https://github.com/michaelneale/swifty-diff) by Michael Neale, used
+under the MIT license.
