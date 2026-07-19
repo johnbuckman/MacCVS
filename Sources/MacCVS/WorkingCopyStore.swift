@@ -436,13 +436,22 @@ final class WorkingCopyStore: ObservableObject {
         guard let root else { return }
         let paths = selectedItems.filter { !$0.isDirectory }.map(\.relPath)
         guard !paths.isEmpty else { statusLine = "Select a file to view log"; return }
-        isBusy = true
-        statusLine = "Fetching log…"
+        beginRunning("Fetching log", command: "cvs log " + paths.joined(separator: " "))
+        appendConsole("$ cvs log \(paths.joined(separator: " "))\n")
         let result = await CVSService.run(["log"] + paths, in: root)
-        appendConsole("$ \(result.command)\n")
-        logText = result.combined.isEmpty ? "(no log)" : result.combined
-        isBusy = false
-        statusLine = "Log ready"
+        endRunning()
+
+        let files = CVSLogParser.parse(result.stdout)
+        if files.isEmpty || files.allSatisfy({ $0.entries.isEmpty }) {
+            // Fall back to the raw text viewer if parsing produced nothing.
+            logText = result.combined.isEmpty ? "(no log)" : result.combined
+            statusLine = "Log ready"
+            return
+        }
+        LogWindowManager.shared.present(
+            LogPayload(title: paths.count == 1 ? paths[0] : "\(paths.count) files",
+                       root: root, files: files))
+        statusLine = "Log opened"
     }
 
     func appendConsole(_ text: String) {

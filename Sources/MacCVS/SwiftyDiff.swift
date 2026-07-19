@@ -191,6 +191,44 @@ enum InlineDiff {
     }
 }
 
+// MARK: - Compact inline diff (unified, coloured) — for embedding e.g. in the log
+
+struct InlineDiffView: View {
+    let files: [DiffFile]
+    private let charW: CGFloat = 6.8
+
+    private func width(_ file: DiffFile) -> CGFloat {
+        let maxLen = file.hunks.flatMap(\.lines).map { $0.content.count + 2 }.max() ?? 0
+        return max(200, CGFloat(maxLen) * charW + 70)
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(files) { file in
+                    ForEach(file.hunks) { hunk in
+                        Text(hunk.header)
+                            .font(.system(size: 10, design: .monospaced)).foregroundStyle(.blue)
+                            .padding(.horizontal, 6).frame(width: width(file), height: 15, alignment: .leading)
+                            .background(Color.blue.opacity(0.08))
+                        ForEach(hunk.lines) { line in
+                            Text(prefix(line) + line.content)
+                                .font(.system(size: 11, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .frame(width: width(file), height: 15, alignment: .leading)
+                                .background(line.type.backgroundColor)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func prefix(_ line: DiffLine) -> String {
+        switch line.type { case .addition: return "+ "; case .deletion: return "- "; case .context: return "  " }
+    }
+}
+
 // MARK: - Diff window
 
 @MainActor

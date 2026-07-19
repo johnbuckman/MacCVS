@@ -38,6 +38,9 @@ a fast, modern macOS front end.
   multi-file diffs in one window. The window auto-sizes to fit the content.
 - **Core CVS operations**: Update, Commit (with a per-file picker), Diff, Log,
   Add, Revert (`update -C`).
+- **History window**: `cvs log` is parsed into a clean timeline of revisions
+  (revision, author, date, ± line counts, message). A **Show diffs** toggle loads
+  the visual diff each revision introduced, inline and on demand.
 - **View filters**: hide dot-files and non-CVS files by default, toggle from the
   View menu (⌘⇧. and ⌘⇧U).
 - Remembers your **last project and directory** across launches.
