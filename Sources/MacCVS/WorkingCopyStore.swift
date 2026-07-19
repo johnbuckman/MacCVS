@@ -46,9 +46,17 @@ final class WorkingCopyStore: ObservableObject {
     init() {
         recents = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
         if CVSService.locateBinary() == nil {
-            statusLine = "⚠︎ cvs binary not found (install via Homebrew: brew install cvs)"
+            statusLine = "⚠︎ bundled cvs not found"
         }
-        restoreLastSession()
+        switch LaunchMode.current {
+        case .openDir(let dir):
+            if FileManager.default.fileExists(atPath: dir + "/CVS") { open(dir) }
+            else { statusLine = "Not a CVS working copy: \(dir)"; restoreLastSession() }
+        case .diff:
+            break                       // diff-only launch: no main working copy
+        case .normal:
+            restoreLastSession()
+        }
     }
 
     /// Reopen the working copy and sub-directory that were open last time.

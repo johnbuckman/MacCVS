@@ -1,18 +1,38 @@
 import SwiftUI
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if case .diff(let paths) = LaunchMode.current {
+            NSApp.setActivationPolicy(.regular)
+            for w in NSApp.windows { w.close() }        // drop the empty main window
+            Task { @MainActor in await CLIDiff.present(paths) }
+        }
+    }
+    // In --diff mode, quit once the diff window is closed.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        LaunchMode.isDiffOnly
+    }
+}
 
 @main
 struct MacCVSApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = WorkingCopyStore()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(store)
-                .task {
-                    // Daily update check, shortly after launch.
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    UpdateChecker.shared.checkIfDue()
-                }
+            if LaunchMode.isDiffOnly {
+                WindowCloser()          // no main window in diff-only mode
+            } else {
+                ContentView()
+                    .environmentObject(store)
+                    .task {
+                        // Daily update check, shortly after launch.
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        UpdateChecker.shared.checkIfDue()
+                    }
+            }
         }
         .commands {
             CommandGroup(after: .appInfo) {

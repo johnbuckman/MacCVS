@@ -90,6 +90,32 @@ swift build -c release          # or: ./build.sh  (assembles a universal .app)
 `build.sh` produces a universal (arm64 + x86_64) `MacCVS.app`. Notarized releases
 are produced with `release.sh` (Developer ID signing + `notarytool`).
 
+## Command line
+
+MacCVS accepts a few command-line options, so it can be scripted or used as a
+graphical diff viewer by other programs. Invoke the executable inside the bundle
+(or `open -a MacCVS --args …`):
+
+```sh
+MacCVS=/Applications/MacCVS.app/Contents/MacOS/MacCVS
+
+"$MacCVS" /path/to/workingcopy      # open a working copy
+"$MacCVS" --open /path/to/workingcopy
+"$MacCVS" --diff FILE               # show the CVS diff (repo vs working) of FILE
+"$MacCVS" --diff LEFT RIGHT         # visual diff between two arbitrary files
+"$MacCVS" --help
+```
+
+In `--diff` mode MacCVS shows **only** the diff window (no main window) and quits
+when that window is closed — so another program can call it to display a diff,
+e.g. as a git difftool:
+
+```sh
+git config --global difftool.maccvs.cmd \
+  '/Applications/MacCVS.app/Contents/MacOS/MacCVS --diff "$LOCAL" "$REMOTE"'
+git difftool -t maccvs
+```
+
 ## Architecture
 
 MacCVS is a thin GUI over the `cvs` CLI — it never re-implements the CVS protocol.
