@@ -4,9 +4,9 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject var store: WorkingCopyStore
 
-    enum SortColumn { case name, status, rev }
-    @State private var sortColumn: SortColumn = .name
-    @State private var sortAscending = true
+    enum SortColumn: String { case name, status, rev }
+    @AppStorage("sortColumn") private var sortColumn: SortColumn = .name
+    @AppStorage("sortAscending") private var sortAscending = true
 
     // Height of the top (directory) pane, remembered across launches. During a
     // drag we use a transient @State value (dragTop) so we don't write UserDefaults

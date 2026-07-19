@@ -51,6 +51,14 @@ struct DiffPayload: Identifiable {
     let id = UUID()
     let title: String
     let files: [DiffFile]
+    /// Working-copy root. When set, each hunk shows a "Discard" button and each
+    /// file a "Discard all" button that revert the working file to the committed
+    /// version. Left nil for compares that aren't backed by a CVS working copy.
+    var root: String? = nil
+    /// Called after a successful discard with the file's relative path, so the
+    /// host can `cvs update` the file (re-stamping its status, pulling any server
+    /// changes) before the diff window re-reads it. Runs on the main actor.
+    var onDiscarded: ((String) async -> Void)? = nil
 }
 
 // MARK: - Parser (adapts swifty-diff's git parser to `cvs diff -u` / `diff -u`)
@@ -120,24 +128,85 @@ enum CVSDiffParser {
         var rows: [DiffRow] = []
         for hunk in file.hunks {
             rows.append(.hunk(hunk.header))
-            var dels: [DiffLine] = [], adds: [DiffLine] = []
-            func flush() {
-                for k in 0..<max(dels.count, adds.count) {
-                    rows.append(.pair(left: k < dels.count ? dels[k] : nil,
-                                      right: k < adds.count ? adds[k] : nil))
-                }
-                dels.removeAll(); adds.removeAll()
-            }
-            for line in hunk.lines {
-                switch line.type {
-                case .context:  flush(); rows.append(.pair(left: line, right: line))
-                case .deletion: dels.append(line)
-                case .addition: adds.append(line)
-                }
-            }
-            flush()
+            for pr in pairRows(for: hunk) { rows.append(.pair(left: pr.left, right: pr.right)) }
         }
         return rows
+    }
+
+    /// Align one hunk's deletions/additions into BEFORE/AFTER row pairs (the same
+    /// pairing `rows(for:)` uses, but for a single hunk so it can render on its own).
+    static func pairRows(for hunk: DiffHunk) -> [(left: DiffLine?, right: DiffLine?)] {
+        var out: [(left: DiffLine?, right: DiffLine?)] = []
+        var dels: [DiffLine] = [], adds: [DiffLine] = []
+        func flush() {
+            for k in 0..<max(dels.count, adds.count) {
+                out.append((left: k < dels.count ? dels[k] : nil,
+                            right: k < adds.count ? adds[k] : nil))
+            }
+            dels.removeAll(); adds.removeAll()
+        }
+        for line in hunk.lines {
+            switch line.type {
+            case .context:  flush(); out.append((left: line, right: line))
+            case .deletion: dels.append(line)
+            case .addition: adds.append(line)
+            }
+        }
+        flush()
+        return out
+    }
+}
+
+// MARK: - Discard (revert a hunk / whole file to the committed version)
+
+/// Reverts working-copy changes at hunk granularity by reverse-applying a
+/// reconstructed unified-diff patch with the system `patch` tool. Because the
+/// patch is rebuilt from the exact hunk we're showing, it applies cleanly at the
+/// right lines and leaves every *other* hunk in the file untouched.
+enum HunkDiscard {
+    /// Rebuild unified-diff text for the given hunks of one file. The `---`/`+++`
+    /// names are cosmetic — `patch` is handed the target file explicitly.
+    static func patchText(path: String, hunks: [DiffHunk]) -> String {
+        var out = "--- \(path)\n+++ \(path)\n"
+        for hunk in hunks {
+            out += hunk.header + "\n"
+            for line in hunk.lines {
+                let prefix: String
+                switch line.type {
+                case .context:  prefix = " "
+                case .addition: prefix = "+"
+                case .deletion: prefix = "-"
+                }
+                out += prefix + line.content + "\n"
+            }
+        }
+        return out
+    }
+
+    /// Reverse-apply `hunks` to the working file, restoring the committed content
+    /// for just those hunks. Returns nil on success, or an error message.
+    static func discard(root: String, path: String, hunks: [DiffHunk]) async -> String? {
+        let patchTool = "/usr/bin/patch"
+        guard FileManager.default.isExecutableFile(atPath: patchTool) else {
+            return "patch tool not found at \(patchTool)"
+        }
+        let target = root + "/" + path
+        let tmp = NSTemporaryDirectory() + "maccvs-discard-\(UUID().uuidString).patch"
+        do { try patchText(path: path, hunks: hunks).write(toFile: tmp, atomically: true, encoding: .utf8) }
+        catch { return "Could not write patch: \(error.localizedDescription)" }
+        defer {
+            let fm = FileManager.default
+            try? fm.removeItem(atPath: tmp)
+            try? fm.removeItem(atPath: target + ".orig")   // some patch builds leave a backup
+        }
+        let r = await CVSService.runTool(patchTool, ["-R", "-p0", target, tmp], in: root)
+        if r.exitCode != 0 {
+            try? FileManager.default.removeItem(atPath: target + ".rej")
+            let msg = (r.stderr.isEmpty ? r.stdout : r.stderr)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return msg.isEmpty ? "patch failed (exit \(r.exitCode))" : msg
+        }
+        return nil
     }
 }
 
@@ -292,8 +361,19 @@ struct DiffView: View {
     @AppStorage("diffWordMode") private var wordMode = false
     @State private var leftFraction: CGFloat = 0.5   // draggable split of the two panes
 
-    private var totalAdd: Int { payload.files.reduce(0) { $0 + $1.additions } }
-    private var totalDel: Int { payload.files.reduce(0) { $0 + $1.deletions } }
+    // Live copy of the diff — mutated as hunks/files are discarded.
+    @State private var files: [DiffFile]
+    @State private var busy = false
+    @State private var errorText: String? = nil
+    @State private var window: NSWindow? = nil
+
+    init(payload: DiffPayload) {
+        self.payload = payload
+        _files = State(initialValue: payload.files)
+    }
+
+    private var totalAdd: Int { files.reduce(0) { $0 + $1.additions } }
+    private var totalDel: Int { files.reduce(0) { $0 + $1.deletions } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -302,10 +382,18 @@ struct DiffView: View {
             GeometryReader { geo in
                 ScrollView(.vertical) {   // shared vertical scroll; panes scroll horizontally themselves
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(payload.files) { file in
+                        ForEach(files) { file in
                             DiffFileView(file: file, availableWidth: geo.size.width,
                                          unified: unified, wordMode: wordMode,
-                                         leftFraction: $leftFraction)
+                                         leftFraction: $leftFraction,
+                                         canDiscard: payload.root != nil,
+                                         discardAll: { discard(file: file, hunks: file.hunks) },
+                                         discardHunk: { discard(file: file, hunks: [$0]) })
+                        }
+                        if files.isEmpty {
+                            Text("All changes discarded — no differences remain.")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity).padding(40)
                         }
                     }
                     .frame(minHeight: geo.size.height, alignment: .topLeading)
@@ -314,6 +402,39 @@ struct DiffView: View {
             }
         }
         .frame(minWidth: 640, minHeight: 360)
+        .disabled(busy)
+        .background(WindowAccessor { window = $0 })
+        .alert("Couldn’t discard", isPresented: Binding(
+            get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
+            Button("OK", role: .cancel) { errorText = nil }
+        } message: { Text(errorText ?? "") }
+    }
+
+    /// Reverse-apply `hunks` to `file`, then re-diff the file and update the view.
+    /// An emptied window closes itself.
+    private func discard(file: DiffFile, hunks: [DiffHunk]) {
+        guard let root = payload.root else { return }
+        busy = true
+        Task {
+            if let err = await HunkDiscard.discard(root: root, path: file.path, hunks: hunks) {
+                busy = false
+                errorText = err
+                return
+            }
+            // Let the host `cvs update` the file (re-stamp status / pull changes)
+            // before we re-read it.
+            await payload.onDiscarded?(file.path)
+            // Re-diff just this file to pick up the shifted line numbers.
+            let r = await CVSService.run(["diff", "-u", file.path], in: root)
+            let fresh = CVSDiffParser.parse(r.stdout)
+                .map { DiffFile(path: file.path, hunks: $0.hunks) }
+                .first { !$0.hunks.isEmpty }
+            if let idx = files.firstIndex(where: { $0.id == file.id }) {
+                if let fresh { files[idx] = fresh } else { files.remove(at: idx) }
+            }
+            busy = false
+            if files.isEmpty { window?.close() }
+        }
     }
 
     private var headerBar: some View {
@@ -349,37 +470,30 @@ private struct DiffFileView: View {
     let unified: Bool
     let wordMode: Bool
     @Binding var leftFraction: CGFloat
+    let canDiscard: Bool
+    let discardAll: () -> Void
+    let discardHunk: (DiffHunk) -> Void
 
     @State private var dragStartFraction: CGFloat? = nil
     private let charW: CGFloat = 7.0
     private let gutter: CGFloat = 46
     private let dividerW: CGFloat = 8
     private let rowH: CGFloat = 18
-    private let hunkH: CGFloat = 20
     private let labelH: CGFloat = 22
 
-    private var rows: [DiffRow] { CVSDiffParser.rows(for: file) }
     private enum Side { case left, right }
-
-    /// Exact content height — a horizontal ScrollView is greedy vertically, so we
-    /// must pin its height or every row balloons with empty space.
-    private var contentHeight: CGFloat {
-        var h: CGFloat = 0
-        for row in rows { if case .hunk = row { h += hunkH } else { h += rowH } }
-        return h
-    }
 
     // Visible pane widths (what the ScrollView shows); content may be wider.
     private var leftVisible: CGFloat { max(120, min(availableWidth - 128, availableWidth * leftFraction)) }
     private var rightVisible: CGFloat { max(80, availableWidth - leftVisible - dividerW) }
 
+    // Content width is measured across the whole file so every hunk's columns
+    // line up, even though each hunk scrolls horizontally on its own.
     private func contentWidth(_ side: Side) -> CGFloat {
         var maxLen = 0
-        for row in rows {
-            switch row {
-            case .hunk(let h): if side == .left { maxLen = max(maxLen, h.count + 2) }
-            case .pair(let l, let r): maxLen = max(maxLen, (side == .left ? l : r)?.content.count ?? 0)
-            }
+        for line in file.hunks.flatMap(\.lines) { maxLen = max(maxLen, line.content.count) }
+        if side == .left {
+            for hunk in file.hunks { maxLen = max(maxLen, hunk.header.count + 2) }
         }
         return CGFloat(maxLen) * charW + gutter + 20
     }
@@ -389,61 +503,102 @@ private struct DiffFileView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // File header (full window width).
-            HStack(spacing: 10) {
-                Image(systemName: "pencil.circle.fill").foregroundStyle(.blue)
-                Text(file.path).font(.system(size: 15, weight: .bold))
-                Spacer()
-                if file.additions > 0 { Text("+\(file.additions)").font(.callout.monospaced()).foregroundStyle(.green) }
-                if file.deletions > 0 { Text("-\(file.deletions)").font(.callout.monospaced()).foregroundStyle(.red) }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .frame(width: availableWidth, alignment: .leading)
-            .background(Color(nsColor: .underPageBackgroundColor))
-
-            if unified {
-                ScrollView(.horizontal) { unifiedBody }.frame(width: availableWidth, alignment: .leading)
-            } else {
-                HStack(alignment: .top, spacing: 0) {
-                    column(.left).frame(width: leftVisible)
-                    divider
-                    column(.right).frame(width: rightVisible)
+            fileHeader
+            if !unified { paneLabels }
+            ForEach(file.hunks) { hunk in
+                hunkHeader(hunk)
+                if unified {
+                    ScrollView(.horizontal) { unifiedHunk(hunk) }
+                        .frame(width: availableWidth, alignment: .leading)
+                } else {
+                    sideBySideHunk(hunk)
                 }
-                .frame(width: availableWidth, alignment: .topLeading)
             }
             Divider().frame(width: availableWidth)
         }
     }
 
-    // MARK: side-by-side columns (each scrolls horizontally; vertical is shared)
-
-    private func column(_ side: Side) -> some View {
-        VStack(spacing: 0) {
-            paneLabel(side == .left ? "BEFORE" : "AFTER", color: side == .left ? .red : .green)
-                .frame(width: side == .left ? leftVisible : rightVisible, height: labelH)
-            ScrollView(.horizontal, showsIndicators: true) {
-                VStack(spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        switch row {
-                        case .hunk(let header):
-                            Text(side == .left ? header : "")
-                                .font(.system(size: 11, design: .monospaced)).foregroundStyle(.blue)
-                                .padding(.horizontal, 8)
-                                .frame(width: paneWidth(side), height: hunkH, alignment: .leading)
-                                .background(Color.blue.opacity(0.08))
-                        case .pair(let l, let r):
-                            cell(line: side == .left ? l : r, other: side == .left ? r : l, side: side)
-                        }
-                    }
+    // File header (full window width) with a "Discard all" button.
+    private var fileHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil.circle.fill").foregroundStyle(.blue)
+            Text(file.path).font(.system(size: 15, weight: .bold))
+            Spacer()
+            if file.additions > 0 { Text("+\(file.additions)").font(.callout.monospaced()).foregroundStyle(.green) }
+            if file.deletions > 0 { Text("-\(file.deletions)").font(.callout.monospaced()).foregroundStyle(.red) }
+            if canDiscard {
+                Button(role: .destructive, action: discardAll) {
+                    Label("Discard all", systemImage: "arrow.uturn.backward")
                 }
+                .controlSize(.small)
+                .help("Revert the whole file to the committed version")
             }
-            .frame(height: contentHeight)   // pin height (horizontal ScrollView is greedy vertically)
         }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(width: availableWidth, alignment: .leading)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 
-    private var divider: some View {
+    // BEFORE / AFTER labels — once per file, above all hunks.
+    private var paneLabels: some View {
+        HStack(alignment: .top, spacing: 0) {
+            paneLabel("BEFORE", color: .red).frame(width: leftVisible, height: labelH)
+            Color.clear.frame(width: dividerW, height: labelH)
+            paneLabel("AFTER", color: .green).frame(width: rightVisible, height: labelH)
+        }
+        .frame(width: availableWidth, alignment: .leading)
+    }
+
+    // A full-width hunk header bar: @@ … @@ on the left, "Discard" on the right.
+    private func hunkHeader(_ hunk: DiffHunk) -> some View {
+        HStack(spacing: 8) {
+            Text(hunk.header)
+                .font(.system(size: 11, design: .monospaced)).foregroundStyle(.blue)
+                .lineLimit(1).truncationMode(.tail)
+            Spacer()
+            if canDiscard {
+                Button { discardHunk(hunk) } label: {
+                    Label("Discard", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless).controlSize(.small)
+                .help("Revert this hunk to the committed version")
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .frame(width: availableWidth, alignment: .leading)
+        .background(Color.blue.opacity(0.08))
+    }
+
+    // MARK: side-by-side columns (each scrolls horizontally; vertical is shared)
+
+    @ViewBuilder
+    private func sideBySideHunk(_ hunk: DiffHunk) -> some View {
+        let pairs = CVSDiffParser.pairRows(for: hunk)
+        let height = CGFloat(pairs.count) * rowH
+        HStack(alignment: .top, spacing: 0) {
+            column(.left, pairs, height: height).frame(width: leftVisible)
+            divider(height: height)
+            column(.right, pairs, height: height).frame(width: rightVisible)
+        }
+        .frame(width: availableWidth, alignment: .topLeading)
+    }
+
+    private func column(_ side: Side, _ pairs: [(left: DiffLine?, right: DiffLine?)],
+                        height: CGFloat) -> some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(spacing: 0) {
+                ForEach(Array(pairs.enumerated()), id: \.offset) { _, pr in
+                    cell(line: side == .left ? pr.left : pr.right,
+                         other: side == .left ? pr.right : pr.left, side: side)
+                }
+            }
+        }
+        .frame(height: height)   // pin height (horizontal ScrollView is greedy vertically)
+    }
+
+    private func divider(height: CGFloat) -> some View {
         ZStack { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 2) }
-            .frame(width: dividerW, height: labelH + contentHeight)   // definite height → row won't center
+            .frame(width: dividerW, height: height)   // definite height → row won't center
             .contentShape(Rectangle())
             .onHover { $0 ? NSCursor.resizeLeftRight.set() : NSCursor.arrow.set() }
             .gesture(                       // GLOBAL space: the divider moves as it drags
@@ -496,26 +651,20 @@ private struct DiffFileView: View {
         return max(availableWidth, CGFloat(maxLen) * charW + 100)
     }
 
-    private var unifiedBody: some View {
+    private func unifiedHunk(_ hunk: DiffHunk) -> some View {
         VStack(spacing: 0) {
-            ForEach(file.hunks) { hunk in
-                Text(hunk.header).font(.system(size: 11, design: .monospaced)).foregroundStyle(.blue)
-                    .padding(.horizontal, 8).padding(.vertical, 2)
-                    .frame(width: unifiedContentWidth, alignment: .leading)
-                    .background(Color.blue.opacity(0.08))
-                ForEach(hunk.lines) { line in
-                    HStack(spacing: 0) {
-                        Text(line.oldLineNumber.map(String.init) ?? "")
-                            .frame(width: 42, alignment: .trailing).padding(.trailing, 4)
-                        Text(line.newLineNumber.map(String.init) ?? "")
-                            .frame(width: 42, alignment: .trailing).padding(.trailing, 6)
-                        Text(prefix(line) + line.content)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(.primary)
-                    .frame(width: unifiedContentWidth, height: rowH, alignment: .leading)
-                    .background(line.type.backgroundColor)
+            ForEach(hunk.lines) { line in
+                HStack(spacing: 0) {
+                    Text(line.oldLineNumber.map(String.init) ?? "")
+                        .frame(width: 42, alignment: .trailing).padding(.trailing, 4)
+                    Text(line.newLineNumber.map(String.init) ?? "")
+                        .frame(width: 42, alignment: .trailing).padding(.trailing, 6)
+                    Text(prefix(line) + line.content)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .font(.system(size: 12, design: .monospaced)).foregroundStyle(.primary)
+                .frame(width: unifiedContentWidth, height: rowH, alignment: .leading)
+                .background(line.type.backgroundColor)
             }
         }
     }
@@ -528,6 +677,18 @@ private struct DiffFileView: View {
         Text(text).font(.caption.bold()).foregroundStyle(.white)
             .frame(maxWidth: .infinity).padding(.vertical, 3).background(color.opacity(0.7))
     }
+}
+
+// MARK: - Window accessor (so the diff view can close its own window when empty)
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { [weak v] in if let w = v?.window { onResolve(w) } }
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: - Color(hex:) from swifty-diff

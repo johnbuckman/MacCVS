@@ -10,8 +10,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="MacCVS"
 BUNDLE_ID="com.johnbuckman.maccvs"
-VERSION="0.5.0"
-SHORT_VERSION="0.5-alpha"
+VERSION="0.6.0"
+SHORT_VERSION="0.6-alpha"
 ID="${MACCVS_SIGN_ID:-Developer ID Application: Vid Tadel (XLS3XF57J8)}"
 NOTARY_PROFILE="${MACCVS_NOTARY_PROFILE:-bping-notary}"
 

@@ -13,7 +13,9 @@ final class WorkingCopyStore: ObservableObject {
         didSet { UserDefaults.standard.set(currentDir, forKey: lastDirKey) }
     }
     @Published var items: [DirItem] = []
-    @Published var selection: Set<String> = []
+    @Published var selection: Set<String> = [] {
+        didSet { UserDefaults.standard.set(Array(selection), forKey: lastSelectionKey) }
+    }
     @Published var console: String = ""
     @Published var isBusy = false
     @Published var runningCommand: String = ""   // command currently executing
@@ -44,6 +46,7 @@ final class WorkingCopyStore: ObservableObject {
     private let recentsKey = "recentWorkingCopies"
     private let lastRootKey = "lastWorkingCopy"
     private let lastDirKey = "lastCurrentDir"
+    private let lastSelectionKey = "lastSelection"
 
     init() {
         recents = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
@@ -70,13 +73,22 @@ final class WorkingCopyStore: ObservableObject {
         let savedDir = UserDefaults.standard.string(forKey: lastDirKey) ?? ""
         let absDir = savedDir.isEmpty ? last : last + "/" + savedDir
         let dir = fm.fileExists(atPath: absDir) ? savedDir : ""
+        // Capture the saved file selection before selection-clearing side effects.
+        let savedSelection = Set(UserDefaults.standard.stringArray(forKey: lastSelectionKey) ?? [])
 
         ensureRecent(last)
         root = last
         cvsRootDescription = readRootDescription(last)
         currentDir = dir
         selection = []
-        Task { await refresh(contactServer: true) }
+        Task {
+            await refresh(contactServer: true)
+            // Re-select the file(s) selected last time — but only if we actually
+            // restored to their directory, and they're still present.
+            guard dir == savedDir else { return }
+            let valid = savedSelection.filter { id in items.contains { $0.id == id } }
+            if !valid.isEmpty { selection = valid }
+        }
     }
 
     private func readRootDescription(_ path: String) -> String {
@@ -355,6 +367,14 @@ final class WorkingCopyStore: ObservableObject {
         await perform(["update", "-C"], on: paths, title: "Revert")
     }
 
+    /// After a hunk/file discard in the diff window, `cvs update` that file so CVS
+    /// re-stamps its Entries timestamp (clearing a stale "modified" flag when the
+    /// file now matches the repo) and pulls any server changes, then refreshes.
+    func updateAfterDiscard(path: String) async {
+        guard root != nil else { return }
+        await perform(["update"], on: [path], title: "Update after discard")
+    }
+
     /// In-app visual side-by-side diff of one file. Uses the prefetched base
     /// revision + local `diff` when available (instant); otherwise `cvs diff -u`.
     func diff(_ item: DirItem? = nil) async {
@@ -374,7 +394,9 @@ final class WorkingCopyStore: ObservableObject {
             if parsed.isEmpty || parsed.allSatisfy({ $0.hunks.isEmpty }) {
                 statusLine = "No differences in \(file.name)"
             } else {
-                DiffWindowManager.shared.present(DiffPayload(title: file.relPath, files: parsed))
+                DiffWindowManager.shared.present(DiffPayload(
+                    title: file.relPath, files: parsed, root: root,
+                    onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) }))
                 statusLine = "Diff opened (instant)"
             }
             return
@@ -394,7 +416,9 @@ final class WorkingCopyStore: ObservableObject {
             statusLine = "No differences in \(file.name)"
             return
         }
-        DiffWindowManager.shared.present(DiffPayload(title: file.relPath, files: files))
+        DiffWindowManager.shared.present(DiffPayload(
+            title: file.relPath, files: files, root: root,
+            onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) }))
         statusLine = "Diff opened"
     }
 
@@ -446,7 +470,8 @@ final class WorkingCopyStore: ObservableObject {
 
         let instant = uncached.isEmpty ? "  ·  instant" : ""
         DiffWindowManager.shared.present(
-            DiffPayload(title: "\(diffFiles.count) files\(instant)", files: diffFiles))
+            DiffPayload(title: "\(diffFiles.count) files\(instant)", files: diffFiles, root: root,
+                        onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) }))
         statusLine = "Diff opened (\(diffFiles.count) files)"
     }
 
