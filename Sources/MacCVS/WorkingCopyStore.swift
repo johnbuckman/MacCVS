@@ -20,6 +20,8 @@ final class WorkingCopyStore: ObservableObject {
     @Published var progressLine: String = ""     // latest line of live output
     @Published var statusLine: String = "No working copy open"
     @Published var recents: [String] = []
+    @Published var repoNames: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: "repoNames") as? [String: String]) ?? [:]
     @Published var cvsRootDescription: String = ""
     @Published var browserReloadToken = 0   // bump to reload the directory columns
     @Published var showHidden: Bool = UserDefaults.standard.bool(forKey: "showHiddenFiles") {
@@ -194,6 +196,14 @@ final class WorkingCopyStore: ObservableObject {
     func removeRecent(_ path: String) {
         recents.removeAll { $0 == path }
         UserDefaults.standard.set(recents, forKey: recentsKey)
+    }
+
+    /// Set (or clear, if empty) a friendly name for a working copy, shown in the
+    /// project-switcher column after the path.
+    func setRepoName(_ path: String, _ name: String) {
+        if name.isEmpty { repoNames[path] = nil } else { repoNames[path] = name }
+        UserDefaults.standard.set(repoNames, forKey: "repoNames")
+        browserReloadToken += 1        // redraw column 0 with the new name
     }
 
     // MARK: - Operations

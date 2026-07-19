@@ -30,11 +30,13 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
     let showHidden: Bool
     let showNonCVS: Bool
     var suspendUpdates: Bool = false   // true while the pane divider is being dragged
+    let repoNames: [String: String]
     let onSelect: (_ rootPath: String, _ relPath: String) -> Void
     let onRemove: (_ rootPath: String) -> Void
+    let onSetName: (_ rootPath: String, _ name: String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(recents: recents, onSelect: onSelect, onRemove: onRemove)
+        Coordinator(recents: recents, onSelect: onSelect, onRemove: onRemove, onSetName: onSetName)
     }
 
     func makeNSView(context: Context) -> NSBrowser {
@@ -68,6 +70,8 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
         coord.recents = recents
         coord.onSelect = onSelect
         coord.onRemove = onRemove
+        coord.onSetName = onSetName
+        coord.repoNames = repoNames
         coord.showHidden = showHidden
         coord.showNonCVS = showNonCVS
 
@@ -98,6 +102,8 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
         var recents: [String]
         var onSelect: (String, String) -> Void
         var onRemove: (String) -> Void
+        var onSetName: (String, String) -> Void
+        var repoNames: [String: String] = [:]
         var showHidden = false
         var showNonCVS = false
         weak var browser: NSBrowser?
@@ -109,10 +115,11 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
         nonisolated(unsafe) private var rightClickMonitor: Any?
 
         init(recents: [String], onSelect: @escaping (String, String) -> Void,
-             onRemove: @escaping (String) -> Void) {
+             onRemove: @escaping (String) -> Void, onSetName: @escaping (String, String) -> Void) {
             self.recents = recents
             self.onSelect = onSelect
             self.onRemove = onRemove
+            self.onSetName = onSetName
         }
 
         deinit {
@@ -133,6 +140,12 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
                           node.isWorkingCopy else { return false }
 
                     let menu = NSMenu()
+                    let nameItem = NSMenuItem(title: "Name Repository…",
+                                              action: #selector(self.nameRepoClicked(_:)), keyEquivalent: "")
+                    nameItem.target = self
+                    nameItem.representedObject = node.rootPath
+                    menu.addItem(nameItem)
+                    menu.addItem(.separator())
                     let forget = NSMenuItem(title: "Forget “\(node.name)”",
                                             action: #selector(self.forgetClicked(_:)), keyEquivalent: "")
                     forget.target = self
@@ -250,7 +263,28 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
             return children(of: node).isEmpty
         }
         func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? {
-            (item as? BrowserNode)?.name ?? ""
+            guard let node = item as? BrowserNode else { return "" }
+            if node.isWorkingCopy, let name = repoNames[node.rootPath], !name.isEmpty {
+                return "\(node.name)  (\(name))"
+            }
+            return node.name
+        }
+
+        @objc func nameRepoClicked(_ sender: NSMenuItem) {
+            guard let path = sender.representedObject as? String else { return }
+            let alert = NSAlert()
+            alert.messageText = "Name Repository"
+            alert.informativeText = "Enter a name to show next to \(path):"
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Cancel")
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+            field.stringValue = repoNames[path] ?? ""
+            field.placeholderString = "e.g. Decent"
+            alert.accessoryView = field
+            alert.window.initialFirstResponder = field
+            if alert.runModal() == .alertFirstButtonReturn {
+                onSetName(path, field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
         }
     }
 }

@@ -143,8 +143,10 @@ struct ContentView: View {
                     showHidden: store.showHidden,
                     showNonCVS: store.showNonCVS,
                     suspendUpdates: isResizing,
+                    repoNames: store.repoNames,
                     onSelect: { root, dir in store.browserSelect(root: root, dir: dir) },
-                    onRemove: { root in store.removeRecent(root) }
+                    onRemove: { root in store.removeRecent(root) },
+                    onSetName: { root, name in store.setRepoName(root, name) }
                 )
             } else {
                 Text("Open a CVS working copy to begin (⌘O)")
