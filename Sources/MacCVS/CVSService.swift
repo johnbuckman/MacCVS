@@ -7,11 +7,12 @@ import Foundation
 /// always the working-copy root the user opened.
 enum CVSService {
 
-    /// Locate a usable cvs binary. Prefers the known Homebrew path.
+    /// The cvs binary **bundled inside the app** (Contents/Resources/cvs) — a
+    /// self-contained universal build. We deliberately never use the system cvs.
     static func locateBinary() -> String? {
-        let candidates = ["/usr/local/bin/cvs", "/opt/homebrew/bin/cvs", "/usr/bin/cvs"]
-        for c in candidates where FileManager.default.isExecutableFile(atPath: c) {
-            return c
+        if let res = Bundle.main.resourcePath {
+            let bundled = res + "/cvs"
+            if FileManager.default.isExecutableFile(atPath: bundled) { return bundled }
         }
         return nil
     }
@@ -20,7 +21,7 @@ enum CVSService {
     /// non-zero exit code (cvs diff returns 1 when differences exist); callers
     /// inspect `exitCode`/`stderr` themselves.
     static func run(_ args: [String], in directory: String) async -> CVSResult {
-        let binary = locateBinary() ?? "/usr/local/bin/cvs"
+        let binary = locateBinary() ?? "/nonexistent/cvs"  // bundled cvs only; never system
         return await Task.detached(priority: .userInitiated) {
             runSync(binary: binary, args: args, directory: directory)
         }.value
@@ -255,7 +256,7 @@ enum CVSService {
     /// main thread) while still returning the full collected result.
     static func runStreaming(_ args: [String], in directory: String,
                              onChunk: @escaping @Sendable (String) -> Void) async -> CVSResult {
-        let binary = locateBinary() ?? "/usr/local/bin/cvs"
+        let binary = locateBinary() ?? "/nonexistent/cvs"  // bundled cvs only; never system
         return await Task.detached(priority: .userInitiated) {
             runSyncStreaming(binary: binary, args: args, directory: directory, onChunk: onChunk)
         }.value

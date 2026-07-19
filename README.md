@@ -64,9 +64,11 @@ draggable divider, and **word-level** (intra-line) highlighting.
 ## Requirements
 
 - macOS 14 (Sonoma) or later.
-- A `cvs` command-line binary on your system. MacCVS looks for it at
-  `/usr/local/bin/cvs`, `/opt/homebrew/bin/cvs`, or `/usr/bin/cvs`.
-  Install one with Homebrew: `brew install cvs` (or use CVSNT).
+- **Nothing else** — MacCVS **bundles its own `cvs`**. You do not need to install
+  CVS. A self-contained universal CVS 1.11.23 client ships inside the app
+  (`Contents/Resources/cvs`, linking only the system libraries), and MacCVS
+  always uses that one, never the system's `cvs`. See
+  [THIRD-PARTY.md](THIRD-PARTY.md) and `build-cvs.sh` for how it's built.
 
 ## Install
 
@@ -89,8 +91,8 @@ are produced with `release.sh` (Developer ID signing + `notarytool`).
 
 MacCVS is a thin GUI over the `cvs` CLI — it never re-implements the CVS protocol.
 
-- `CVSService` execs `cvs` directly via `Process` (no shell), and computes local
-  modified-state from `CVS/Entries` timestamps.
+- `CVSService` execs the **bundled** `cvs` directly via `Process` (no shell), and
+  computes local modified-state from `CVS/Entries` timestamps.
 - `WorkingCopyStore` is the app state (`@MainActor` `ObservableObject`): the file
   list, the FSEvents watcher, the base-revision prefetch cache, and all operations.
 - `DirectoryColumnBrowser` wraps `NSBrowser` for the column view + project switcher.
@@ -101,6 +103,7 @@ MacCVS is a thin GUI over the `cvs` CLI — it never re-implements the CVS proto
 
 MacCVS is licensed under the **GNU General Public License v3.0** (see `LICENSE`).
 
-The diff viewer adapts the model and visual style of
-[swifty-diff](https://github.com/michaelneale/swifty-diff) by Michael Neale, used
-under the MIT license.
+It bundles **GNU CVS 1.11.23** (GPL-2-or-later) as a separate executable, and the
+diff viewer adapts the model and visual style of
+[swifty-diff](https://github.com/michaelneale/swifty-diff) by Michael Neale (MIT).
+See [THIRD-PARTY.md](THIRD-PARTY.md).
