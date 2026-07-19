@@ -101,18 +101,20 @@ MacCVS=/Applications/MacCVS.app/Contents/MacOS/MacCVS
 
 "$MacCVS" /path/to/workingcopy      # open a working copy
 "$MacCVS" --open /path/to/workingcopy
-"$MacCVS" --diff FILE               # show the CVS diff (repo vs working) of FILE
-"$MacCVS" --diff LEFT RIGHT         # visual diff between two arbitrary files
+"$MacCVS" --diff FILE...            # CVS diff (repo vs working) of one or more files
+"$MacCVS" --diff lib/a.tcl lib/b.tcl lib/c.tcl   # several files, one window
+"$MacCVS" --compare LEFT RIGHT      # visual diff between two arbitrary files
 "$MacCVS" --help
 ```
 
-In `--diff` mode MacCVS shows **only** the diff window (no main window) and quits
-when that window is closed — so another program can call it to display a diff,
-e.g. as a git difftool:
+`--diff` accepts **any number of files** and shows all of their CVS diffs together
+in one window. In `--diff`/`--compare` mode MacCVS shows **only** the diff window
+(no main window) and quits when it is closed — so another program can call it to
+display a diff, e.g. as a git difftool (which passes two files to compare):
 
 ```sh
 git config --global difftool.maccvs.cmd \
-  '/Applications/MacCVS.app/Contents/MacOS/MacCVS --diff "$LOCAL" "$REMOTE"'
+  '/Applications/MacCVS.app/Contents/MacOS/MacCVS --compare "$LOCAL" "$REMOTE"'
 git difftool -t maccvs
 ```
 

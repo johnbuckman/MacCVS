@@ -3,15 +3,24 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if case .diff(let paths) = LaunchMode.current {
+        switch LaunchMode.current {
+        case .diff(let paths):
             NSApp.setActivationPolicy(.regular)
             for w in NSApp.windows { w.close() }        // drop the empty main window
-            Task { @MainActor in await CLIDiff.present(paths) }
+            Task { @MainActor in await CLIDiff.diff(paths) }
+        case .compare(let left, let right):
+            NSApp.setActivationPolicy(.regular)
+            for w in NSApp.windows { w.close() }
+            Task { @MainActor in await CLIDiff.compare(left, right) }
+        default:
+            break
         }
     }
-    // In --diff mode, quit once the diff window is closed.
+    // Normal mode: quit when the last window closes. Diff-only mode: DON'T
+    // auto-quit (there's a window-less gap while diffs are fetched); the diff
+    // window manager terminates the app when its window is closed instead.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        LaunchMode.isDiffOnly
+        !LaunchMode.isDiffOnly
     }
 }
 

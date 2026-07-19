@@ -279,6 +279,8 @@ final class DiffWindowManager: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         if let w = notification.object as? NSWindow { windows.remove(w) }
+        // In a --diff/--compare launch, quit once the last diff window closes.
+        if LaunchMode.isDiffOnly && windows.isEmpty { NSApp.terminate(nil) }
     }
 }
 

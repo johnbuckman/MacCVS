@@ -54,7 +54,7 @@ final class WorkingCopyStore: ObservableObject {
         case .openDir(let dir):
             if FileManager.default.fileExists(atPath: dir + "/CVS") { open(dir) }
             else { statusLine = "Not a CVS working copy: \(dir)"; restoreLastSession() }
-        case .diff:
+        case .diff, .compare:
             break                       // diff-only launch: no main working copy
         case .normal:
             restoreLastSession()
