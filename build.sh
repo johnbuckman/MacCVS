@@ -5,7 +5,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="MacCVS"
 BUNDLE_ID="com.johnbuckman.maccvs"
-VERSION="0.1.0"
+VERSION="0.2.0"
+SHORT_VERSION="0.2-alpha"
 DEST="/Applications/AI Apps"
 
 echo "== Building universal release =="
@@ -28,7 +29,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>       <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>        <string>$BUNDLE_ID</string>
     <key>CFBundleVersion</key>           <string>$VERSION</string>
-    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleShortVersionString</key><string>$SHORT_VERSION</string>
     <key>CFBundleExecutable</key>        <string>$APP_NAME</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>

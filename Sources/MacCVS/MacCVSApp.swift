@@ -8,8 +8,18 @@ struct MacCVSApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .task {
+                    // Daily update check, shortly after launch.
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    UpdateChecker.shared.checkIfDue()
+                }
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task { await UpdateChecker.shared.check(userInitiated: true) }
+                }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Working Copy…") { openWorkingCopy() }
                     .keyboardShortcut("o")

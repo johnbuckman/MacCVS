@@ -41,6 +41,10 @@ a fast, modern macOS front end.
 - **View filters**: hide dot-files and non-CVS files by default, toggle from the
   View menu (⌘⇧. and ⌘⇧U).
 - Remembers your **last project and directory** across launches.
+- **Automatic updates**: once a day MacCVS checks GitHub Releases; if a newer
+  build exists it offers to update, then downloads it, verifies it is notarized,
+  and relaunches into the new version. Also available on demand from the app menu
+  (*MacCVS ▸ Check for Updates…*).
 
 ## The diff viewer
 
