@@ -6,10 +6,13 @@
     </linearGradient>
   </defs>
   <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg9)"/>
-  <rect x="104" y="120" width="304" height="272" rx="28" fill="#0f172a" stroke="#334155" stroke-width="6"/>
-  <g fill="#64748b"><circle cx="140" cy="156" r="10"/><circle cx="172" cy="156" r="10"/><circle cx="204" cy="156" r="10"/></g>
-  <line x1="104" y1="184" x2="408" y2="184" stroke="#334155" stroke-width="6"/>
-  <text x="140" y="252" font-family="Menlo, monospace" font-size="34" fill="#22c55e">$ cvs</text>
-  <text x="140" y="300" font-family="Menlo, monospace" font-size="34" fill="#e2e8f0">update</text>
-  <rect x="304" y="274" width="22" height="36" fill="#22c55e"/>
+  <!-- terminal graphic scaled up about the icon centre to trim the dark border -->
+  <g transform="translate(256 256) scale(1.42) translate(-256 -256)">
+    <rect x="104" y="120" width="304" height="272" rx="28" fill="#0f172a" stroke="#334155" stroke-width="6"/>
+    <g fill="#64748b"><circle cx="140" cy="156" r="10"/><circle cx="172" cy="156" r="10"/><circle cx="204" cy="156" r="10"/></g>
+    <line x1="104" y1="184" x2="408" y2="184" stroke="#334155" stroke-width="6"/>
+    <text x="140" y="252" font-family="Menlo, monospace" font-size="34" fill="#22c55e">$ cvs</text>
+    <text x="140" y="300" font-family="Menlo, monospace" font-size="34" fill="#e2e8f0">update</text>
+    <rect x="304" y="274" width="22" height="36" fill="#22c55e"/>
+  </g>
 </svg>
