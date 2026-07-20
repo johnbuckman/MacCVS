@@ -396,7 +396,8 @@ final class WorkingCopyStore: ObservableObject {
             } else {
                 DiffWindowManager.shared.present(DiffPayload(
                     title: file.relPath, files: parsed, root: root,
-                    onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) }))
+                    onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) },
+                    onCommit: { [weak self] paths, msg in await self?.commit(message: msg, paths: paths) }))
                 statusLine = "Diff opened (instant)"
             }
             return
@@ -418,7 +419,8 @@ final class WorkingCopyStore: ObservableObject {
         }
         DiffWindowManager.shared.present(DiffPayload(
             title: file.relPath, files: files, root: root,
-            onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) }))
+            onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) },
+            onCommit: { [weak self] paths, msg in await self?.commit(message: msg, paths: paths) }))
         statusLine = "Diff opened"
     }
 
@@ -471,7 +473,8 @@ final class WorkingCopyStore: ObservableObject {
         let instant = uncached.isEmpty ? "  ·  instant" : ""
         DiffWindowManager.shared.present(
             DiffPayload(title: "\(diffFiles.count) files\(instant)", files: diffFiles, root: root,
-                        onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) }))
+                        onDiscarded: { [weak self] p in await self?.updateAfterDiscard(path: p) },
+                        onCommit: { [weak self] paths, msg in await self?.commit(message: msg, paths: paths) }))
         statusLine = "Diff opened (\(diffFiles.count) files)"
     }
 

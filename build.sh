@@ -5,8 +5,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="MacCVS"
 BUNDLE_ID="com.johnbuckman.maccvs"
-VERSION="0.6.0"
-SHORT_VERSION="0.6-alpha"
+VERSION="0.7.0"
+SHORT_VERSION="0.7-alpha"
 DEST="/Applications/AI Apps"
 
 echo "== Building universal release =="

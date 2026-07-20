@@ -59,6 +59,9 @@ struct DiffPayload: Identifiable {
     /// host can `cvs update` the file (re-stamping its status, pulling any server
     /// changes) before the diff window re-reads it. Runs on the main actor.
     var onDiscarded: ((String) async -> Void)? = nil
+    /// Commits the given paths with a message. Set by the host so the diff window
+    /// can commit the file(s) it is showing. Runs on the main actor.
+    var onCommit: ((_ paths: [String], _ message: String) async -> Void)? = nil
 }
 
 // MARK: - Parser (adapts swifty-diff's git parser to `cvs diff -u` / `diff -u`)
@@ -366,6 +369,8 @@ struct DiffView: View {
     @State private var busy = false
     @State private var errorText: String? = nil
     @State private var window: NSWindow? = nil
+    @State private var showCommit = false
+    @State private var commitMessage = ""
 
     init(payload: DiffPayload) {
         self.payload = payload
@@ -404,10 +409,58 @@ struct DiffView: View {
         .frame(minWidth: 640, minHeight: 360)
         .disabled(busy)
         .background(WindowAccessor { window = $0 })
+        .sheet(isPresented: $showCommit) { commitSheet }
         .alert("Couldn’t discard", isPresented: Binding(
             get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
             Button("OK", role: .cancel) { errorText = nil }
         } message: { Text(errorText ?? "") }
+    }
+
+    // MARK: - Commit the file(s) this window is showing
+
+    private var commitSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Commit Changes").font(.title3.bold())
+            Text("Files").font(.caption.bold()).foregroundStyle(.secondary)
+            List(files) { file in
+                HStack(spacing: 8) {
+                    Text(file.path).lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    if file.additions > 0 { Text("+\(file.additions)").foregroundStyle(.green) }
+                    if file.deletions > 0 { Text("-\(file.deletions)").foregroundStyle(.red) }
+                }
+                .font(.callout.monospaced())
+            }
+            .frame(height: 120).border(Color(nsColor: .separatorColor))
+
+            Text("Message").font(.caption.bold()).foregroundStyle(.secondary)
+            TextEditor(text: $commitMessage)
+                .font(.body.monospaced())
+                .frame(height: 100).border(Color(nsColor: .separatorColor))
+
+            HStack {
+                Text("\(files.count) file(s)").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") { showCommit = false }.keyboardShortcut(.cancelAction)
+                Button("Commit") { commit() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20).frame(width: 520)
+    }
+
+    /// Commit every file in this window, then close it — the diff is now stale.
+    private func commit() {
+        let paths = files.map(\.path)
+        let message = commitMessage
+        showCommit = false
+        busy = true
+        Task {
+            await payload.onCommit?(paths, message)
+            busy = false
+            window?.close()
+        }
     }
 
     /// Reverse-apply `hunks` to `file`, then re-diff the file and update the view.
@@ -451,6 +504,13 @@ struct DiffView: View {
                 }.font(.caption.monospaced())
             }
             Spacer()
+            if payload.onCommit != nil, !files.isEmpty {
+                Button { commitMessage = ""; showCommit = true } label: {
+                    Label("Commit", systemImage: "arrow.up.circle.fill")
+                        .labelStyle(.titleAndIcon)
+                }
+                .help("Commit the file(s) shown in this diff")
+            }
             Picker("", selection: $unified) {
                 Text("Side by side").tag(false); Text("Unified").tag(true)
             }.pickerStyle(.segmented).fixedSize()
