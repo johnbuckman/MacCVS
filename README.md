@@ -6,6 +6,10 @@ was a PowerPC/Carbon app that has been unrunnable since macOS Catalina removed
 Carbon and 32-bit support. MacCVS is a fresh, universal (Apple Silicon + Intel),
 notarized app that drives your existing `cvs` command-line tool.
 
+[![MacCVS explainer video](https://img.youtube.com/vi/MQ6-EnU0xs0/maxresdefault.jpg)](https://youtu.be/MQ6-EnU0xs0)
+
+**[Watch the 2-minute tour](https://youtu.be/MQ6-EnU0xs0)** · **[User guide](https://johnbuckman.github.io/maccvs-help.html)** · **[Download](https://github.com/johnbuckman/MacCVS/releases)**
+
 ![MacCVS main window](docs/screenshots/main-window.png)
 
 ## Why
@@ -36,6 +40,10 @@ a fast, modern macOS front end.
 - **Native side-by-side diff window** (see below): line- or **word-level**
   highlighting, a unified-view toggle, a **draggable center divider**, and
   multi-file diffs in one window. The window auto-sizes to fit the content.
+- **Discard a single change**: every hunk in the diff window has a *Discard* button
+  (and each file *Discard all*), which puts just that part back as it is in the repository.
+- **Commit from the diff window**: once you've checked the changes, commit exactly the
+  files the window shows.
 - **Core CVS operations**: Update, Commit (with a per-file picker), Diff, Log,
   Add, Revert (`update -C`).
 - **History window**: `cvs log` is parsed into a clean timeline of revisions

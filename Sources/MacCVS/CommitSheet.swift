@@ -66,6 +66,21 @@ struct CommitSheet: View {
         }
         .padding(20)
         .frame(width: 520)
+        .onReceive(NotificationCenter.default.publisher(for: .macCVSDebug)) { n in
+            guard let c = DebugCommand.from(n) else { return }
+            switch c.cmd {
+            case "sheet-message": message = c.args.first ?? ""
+            case "sheet-toggle":
+                if let p = c.args.first { if chosen.contains(p) { chosen.remove(p) } else { chosen.insert(p) } }
+            case "sheet-cancel": dismiss()
+            case "sheet-press":
+                guard !chosen.isEmpty, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                let paths = Array(chosen), msg = message
+                dismiss()
+                Task { await store.commit(message: msg, paths: paths) }
+            default: break
+            }
+        }
         .onAppear {
             // Pre-select everything committable, or the current table selection.
             let selected = store.selection.intersection(Set(committable.map(\.relPath)))

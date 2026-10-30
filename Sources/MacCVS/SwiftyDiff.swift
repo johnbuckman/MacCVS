@@ -309,7 +309,7 @@ final class DiffWindowManager: NSObject, NSWindowDelegate {
     private var windows: Set<NSWindow> = []
 
     func present(_ payload: DiffPayload) {
-        let hosting = NSHostingController(rootView: DiffView(payload: payload))
+        let hosting = NSHostingController(rootView: DiffView(payload: payload).debugActive())
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.title = payload.title
@@ -409,7 +409,24 @@ struct DiffView: View {
         .frame(minWidth: 640, minHeight: 360)
         .disabled(busy)
         .background(WindowAccessor { window = $0 })
-        .sheet(isPresented: $showCommit) { commitSheet }
+        .sheet(isPresented: $showCommit) { commitSheet.debugActive() }
+        .onReceive(NotificationCenter.default.publisher(for: .macCVSDebug)) { n in
+            guard let c = DebugCommand.from(n), c.targets(window) else { return }
+            func num(_ i: Int) -> Int { i < c.args.count ? Int(c.args[i]) ?? 0 : 0 }
+            switch c.cmd {
+            case "diff-split": if let f = Double(c.args.first ?? "") { leftFraction = min(0.85, max(0.15, f)) }
+            case "diff-commit": if payload.onCommit != nil, !files.isEmpty { commitMessage = ""; showCommit = true }
+            case "sheet-message": if showCommit { commitMessage = c.args.first ?? "" }
+            case "sheet-cancel": showCommit = false
+            case "sheet-press": if showCommit, !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { commit() }
+            case "diff-discard":
+                if num(0) < files.count, num(1) < files[num(0)].hunks.count {
+                    discard(file: files[num(0)], hunks: [files[num(0)].hunks[num(1)]])
+                }
+            case "diff-discard-all": if num(0) < files.count { discard(file: files[num(0)], hunks: files[num(0)].hunks) }
+            default: break
+            }
+        }
         .alert("Couldn’t discard", isPresented: Binding(
             get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
             Button("OK", role: .cancel) { errorText = nil }

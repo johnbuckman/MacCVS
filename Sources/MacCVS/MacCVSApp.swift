@@ -3,6 +3,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DebugControl.startIfConfigured()
         switch LaunchMode.current {
         case .diff(let paths):
             NSApp.setActivationPolicy(.regular)
@@ -36,6 +37,7 @@ struct MacCVSApp: App {
             } else {
                 ContentView()
                     .environmentObject(store)
+                    .debugActive()
                     .task {
                         // Daily update check, shortly after launch.
                         try? await Task.sleep(nanoseconds: 3_000_000_000)

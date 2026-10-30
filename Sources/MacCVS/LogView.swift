@@ -97,7 +97,7 @@ final class LogWindowManager: NSObject, NSWindowDelegate {
     private var windows: Set<NSWindow> = []
 
     func present(_ payload: LogPayload) {
-        let hosting = NSHostingController(rootView: LogView(payload: payload))
+        let hosting = NSHostingController(rootView: LogView(payload: payload).debugActive())
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.title = "History — " + payload.title
@@ -168,6 +168,10 @@ struct LogView: View {
             .background(Color(nsColor: .textBackgroundColor))
         }
         .frame(minWidth: 560, minHeight: 400)
+        .onReceive(NotificationCenter.default.publisher(for: .macCVSDebug)) { n in
+            guard let c = DebugCommand.from(n), c.cmd == "log-diffs" else { return }
+            showDiffs = c.args.first != "off"
+        }
     }
 }
 

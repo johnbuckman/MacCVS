@@ -75,7 +75,7 @@ struct ContentView: View {
         .navigationTitle(store.rootName)
         .navigationSubtitle(pathSubtitle)
         .safeAreaInset(edge: .bottom) { statusBar }
-        .sheet(isPresented: $store.showCommitSheet) { CommitSheet() }
+        .sheet(isPresented: $store.showCommitSheet) { CommitSheet().debugActive() }
         .sheet(item: Binding(
             get: { store.logText.map { TextPayload(title: "Log", text: $0) } },
             set: { if $0 == nil { store.logText = nil } })
@@ -84,7 +84,7 @@ struct ContentView: View {
 
     private var pathSubtitle: String {
         let loc = store.currentDir.isEmpty ? "" : " › " + store.currentDir
-        return store.cvsRootDescription + loc
+        return Demo.s(store.cvsRootDescription + loc)
     }
 
     // MARK: - Draggable resizer between the two panes
@@ -227,7 +227,7 @@ struct ContentView: View {
     private var runningOverlay: some View {
         VStack(spacing: 10) {
             ProgressView().controlSize(.large)
-            Text(store.runningCommand.isEmpty ? "Working…" : store.runningCommand)
+            Text(store.runningCommand.isEmpty ? "Working…" : Demo.s(store.runningCommand))
                 .font(.callout.monospaced())
                 .lineLimit(2).truncationMode(.middle)
                 .multilineTextAlignment(.center)
@@ -301,7 +301,7 @@ struct ContentView: View {
             Divider()
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(store.console.isEmpty ? "cvs output appears here." : store.console)
+                    Text(store.console.isEmpty ? "cvs output appears here." : Demo.s(store.console))
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(store.console.isEmpty ? .secondary : .primary)
                         .textSelection(.enabled)

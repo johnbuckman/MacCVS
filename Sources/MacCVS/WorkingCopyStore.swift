@@ -4,6 +4,9 @@ import AppKit
 
 @MainActor
 final class WorkingCopyStore: ObservableObject {
+    /// The app's store, for the debug control channel (DebugControl.swift).
+    static weak var current: WorkingCopyStore?
+
     @Published var root: String? = nil {
         didSet {
             if let root { UserDefaults.standard.set(root, forKey: lastRootKey) }
@@ -49,6 +52,7 @@ final class WorkingCopyStore: ObservableObject {
     private let lastSelectionKey = "lastSelection"
 
     init() {
+        WorkingCopyStore.current = self
         recents = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
         if CVSService.locateBinary() == nil {
             statusLine = "⚠︎ bundled cvs not found"

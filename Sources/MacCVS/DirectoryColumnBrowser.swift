@@ -265,8 +265,9 @@ struct DirectoryColumnBrowser: NSViewRepresentable {
         func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? {
             guard let node = item as? BrowserNode else { return "" }
             if node.isWorkingCopy, let name = repoNames[node.rootPath], !name.isEmpty {
-                return "\(node.name)  (\(name))"
+                return "\(Demo.s(node.name))  (\(name))"
             }
+            if node.isWorkingCopy { return Demo.s(node.name) }
             return node.name
         }
 
