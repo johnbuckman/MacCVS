@@ -6,9 +6,9 @@ was a PowerPC/Carbon app that has been unrunnable since macOS Catalina removed
 Carbon and 32-bit support. MacCVS is a fresh, universal (Apple Silicon + Intel),
 notarized app that drives your existing `cvs` command-line tool.
 
-[![MacCVS explainer video](https://img.youtube.com/vi/MQ6-EnU0xs0/maxresdefault.jpg)](https://youtu.be/MQ6-EnU0xs0)
+[![MacCVS explainer video](https://img.youtube.com/vi/9Td586KklbE/maxresdefault.jpg)](https://youtu.be/9Td586KklbE)
 
-**[Watch the 2-minute tour](https://youtu.be/MQ6-EnU0xs0)** · **[User guide](https://johnbuckman.github.io/maccvs-help.html)** · **[Download](https://github.com/johnbuckman/MacCVS/releases)**
+**[Watch the 2.5-minute tour](https://youtu.be/9Td586KklbE)** · **[User guide](https://johnbuckman.github.io/maccvs-help.html)** · **[Download](https://github.com/johnbuckman/MacCVS/releases)**
 
 ![MacCVS main window](docs/screenshots/main-window.png)
 
